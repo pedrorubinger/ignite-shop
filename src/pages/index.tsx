@@ -1,12 +1,26 @@
+import { GetStaticProps } from "next";
 import Image from "next/image";
+import Stripe from "stripe";
 import { useKeenSlider } from "keen-slider/react";
 
 import { HomeContainer, Product } from "../styles/pages/home";
 import ShirtOne from "@/assets/shirts/Variant1.png";
 import ShirtTwo from "@/assets/shirts/Variant2.png";
 import ShirtThree from "@/assets/shirts/Variant3.png";
+import { stripe } from "@/lib/stripe";
 
-export default function Home() {
+interface Product {
+  id: string;
+  name: string;
+  imageUrl: string;
+  price: number;
+}
+
+interface HomeProps {
+  products: Product[];
+}
+
+export default function Home({ products }: HomeProps) {
   const [sliderRef] = useKeenSlider({
     slides: {
       perView: 3,
@@ -16,32 +30,48 @@ export default function Home() {
 
   return (
     <HomeContainer ref={sliderRef} className="keen-slider">
-      <Product className="keen-slider__slide">
-        <Image src={ShirtOne} width={520} height={420} alt="" />
+      {products.map(({ id, imageUrl, price, name }) => {
+        return (
+          <Product className="keen-slider__slide" key={id}>
+            <Image src={imageUrl} width={520} height={420} alt="" />
 
-        <footer>
-          <strong>Camiseta 1</strong>
-          <span>R$ 69,90</span>
-        </footer>
-      </Product>
-
-      <Product className="keen-slider__slide">
-        <Image src={ShirtTwo} width={520} height={420} alt="" />
-
-        <footer>
-          <strong>Camiseta 2</strong>
-          <span>R$ 69,90</span>
-        </footer>
-      </Product>
-
-      <Product className="keen-slider__slide">
-        <Image src={ShirtThree} width={520} height={420} alt="" />
-
-        <footer>
-          <strong>Camiseta 3</strong>
-          <span>R$ 89,90</span>
-        </footer>
-      </Product>
+            <footer>
+              <strong>{name}</strong>
+              <span>{price}</span>
+            </footer>
+          </Product>
+        );
+      })}
     </HomeContainer>
   );
 }
+
+/** This function is used to request crucial information that must necessarily
+ *  appear on the screen for bots, crawlers, indexers, and other similar programs.
+ */
+export const getStaticProps: GetStaticProps = async () => {
+  const response = await stripe.products.list({
+    expand: ["data.default_price"],
+  });
+
+  const products = response.data.map((product) => {
+    const price = product.default_price as Stripe.Price;
+
+    return {
+      id: product.id,
+      name: product.name,
+      imageUrl: product.images[0],
+      price: new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format((price.unit_amount ?? 0) / 100),
+    };
+  });
+
+  return {
+    props: {
+      products,
+    },
+    revalidate: 60 * 60 * 2, // 2 hours
+  };
+};
