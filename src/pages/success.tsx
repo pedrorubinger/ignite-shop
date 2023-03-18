@@ -30,8 +30,8 @@ export default function Success({ customerName, product }: SuccessProps) {
         </ImageContainer>
 
         <p>
-          Uhuul <strong>{customerName}</strong>, sua{" "}
-          <strong>{product.name}</strong> já está a caminho da sua casa.
+          Uhuul <strong>{customerName}</strong>, sua compra já está a caminho da
+          sua casa!
         </p>
 
         <Link href="/">Voltar ao catálogo</Link>

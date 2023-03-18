@@ -1,17 +1,38 @@
+import { useEffect, useState } from "react";
+import axios from "axios";
 import { GetStaticPaths, GetStaticProps } from "next";
 import Image from "next/image";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import Stripe from "stripe";
 
-import { stripe } from "@/lib/stripe";
 import {
+  CartDrawerContainer,
+  CartItemContainer,
+  CartItemImageContainer,
+  CartItemInfo,
+  CartItemsListContainer,
+  CartRemoveItemButton,
+  CartReviewAmountContainer,
+  CartReviewPriceContainer,
+  CustomButton,
   ImageContainer,
   ProductContainer,
   ProductDetails,
 } from "@/styles/pages/product";
-import axios from "axios";
-import { useState } from "react";
+import { stripe } from "@/lib/stripe";
+import { convertCurrencyStringToNumber, formatCurrency } from "@/utils";
+import { CustomDrawer } from "@/components/Drawer";
+
+interface CartItem {
+  id: string;
+  priceId: string;
+  formattedPrice: string;
+  price: number;
+  quantity: number;
+  imageUrl: string;
+  name: string;
+}
 
 interface Product {
   id: string;
@@ -26,23 +47,49 @@ interface ProductProps {
   product: Product;
 }
 
+interface LineItem {
+  price: string;
+  quantity: number;
+}
+
+const CART_STORAGE_NAME = "cart";
+
 export default function Product({ product }: ProductProps) {
+  const [isDrawerVisible, setIsDrawerVisible] = useState(false);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCreatingCheckoutSession, setIsCreatingCheckoutSession] =
     useState(false);
   const { isFallback } = useRouter();
+
+  useEffect(() => {
+    try {
+      const cartItemsString: string | null =
+        localStorage?.getItem?.(CART_STORAGE_NAME);
+
+      setCartItems(cartItemsString ? JSON.parse(cartItemsString) ?? [] : []);
+    } catch (err) {
+      console.log("err", err);
+    }
+  }, []);
 
   if (isFallback) {
     return <p>Carregando...</p>;
   }
 
+  const totalPrice = cartItems?.reduce((acc, item) => acc + item.price, 0);
+  const totalAmount = cartItems?.length;
+
   const handleBuyProduct = async () => {
     try {
       setIsCreatingCheckoutSession(true);
 
+      // line_items: []
       const response = await axios.post("/api/checkout", {
-        priceId: product.defaultPriceId,
+        lineItems: cartItems.map((item) => ({
+          price: item.priceId,
+          quantity: 1,
+        })),
       });
-
       const { checkoutUrl } = response.data;
 
       window.location.href = checkoutUrl;
@@ -53,11 +100,95 @@ export default function Product({ product }: ProductProps) {
     }
   };
 
+  const onRemoveCartItem = (item: CartItem) => {
+    const newArray = cartItems.filter((cartItem) => cartItem.id !== item.id);
+    const cartItemsString = JSON.stringify(newArray);
+
+    localStorage.setItem(CART_STORAGE_NAME, cartItemsString);
+    setCartItems(newArray);
+
+    if (cartItems.length === 1) {
+      setIsDrawerVisible(false);
+    }
+  };
+
+  const addItemToCart = () => {
+    const cartItem: CartItem = {
+      id: product.id,
+      name: product.name,
+      priceId: product.defaultPriceId,
+      formattedPrice: product.price,
+      imageUrl: product.imageUrl,
+      price: convertCurrencyStringToNumber(product.price),
+      quantity: 1,
+    };
+
+    if (cartItems) {
+      if (cartItems.find((item) => item.id === cartItem.id)) return;
+
+      cartItems.push(cartItem);
+
+      const cartItemsString = JSON.stringify(cartItems);
+
+      localStorage.setItem(CART_STORAGE_NAME, cartItemsString);
+    }
+  };
+
+  const handleAddToCart = async () => {
+    addItemToCart();
+    setIsDrawerVisible(true);
+  };
+
   return (
     <>
       <Head>
         <title>Home | Ignite Shop</title>
       </Head>
+
+      <CustomDrawer
+        title="Sacola de compras"
+        onClose={() => setIsDrawerVisible(false)}
+        isVisible={isDrawerVisible}
+        width={500}
+      >
+        <CartDrawerContainer>
+          <CartItemsListContainer>
+            {cartItems?.map((item) => {
+              return (
+                <CartItemContainer key={item.id}>
+                  <CartItemImageContainer>
+                    <Image src={item.imageUrl} width={80} height={80} alt="" />
+                  </CartItemImageContainer>
+
+                  <CartItemInfo>
+                    <h4>{item.name}</h4>
+                    <span>{item.formattedPrice}</span>
+                    <CartRemoveItemButton
+                      onClick={() => onRemoveCartItem(item)}
+                    >
+                      Remover
+                    </CartRemoveItemButton>
+                  </CartItemInfo>
+                </CartItemContainer>
+              );
+            })}
+          </CartItemsListContainer>
+
+          <CartReviewAmountContainer>
+            <h4>Quantidade</h4>
+            <span>{totalAmount} produto(s)</span>
+          </CartReviewAmountContainer>
+
+          <CartReviewPriceContainer>
+            <h4>Valor total</h4>
+            <span>{formatCurrency(totalPrice ?? 0, true)}</span>
+          </CartReviewPriceContainer>
+
+          <CustomButton width="full" onClick={handleBuyProduct}>
+            Finalizar compra
+          </CustomButton>
+        </CartDrawerContainer>
+      </CustomDrawer>
 
       <ProductContainer>
         <ImageContainer>
@@ -70,12 +201,12 @@ export default function Product({ product }: ProductProps) {
 
           <p>{product.description}</p>
 
-          <button
-            onClick={handleBuyProduct}
+          <CustomButton
+            onClick={handleAddToCart}
             disabled={isCreatingCheckoutSession}
           >
-            Comprar agora
-          </button>
+            Colocar na sacola
+          </CustomButton>
         </ProductDetails>
       </ProductContainer>
     </>
